@@ -271,29 +271,45 @@ void geometry_information::bshape(hpcshape& sh, PPR prio) {
 
 void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int shapeid, double bonus, flagtype flags) {
   bshape(sh, prio);
+
+  // Find the polygon data in the global vector
+  // It should start with a terminator followed by ID of the polygon
   int whereis = 0;
   while(polydata[whereis] != NEWSHAPE || polydata[whereis+1] != shapeid) {
     whereis++;
+
+    // Two terminators in a row indicate end of the vertex vector
+    // Requested polygon has not been found
     if(polydata[whereis] == NEWSHAPE && polydata[whereis+1] == NEWSHAPE) {
       println(hlog, "error: shape not available");
       exit(1);
       }
     }
+  
+  // First two values after the header are numbers of rotational and axial symmetries
   int rots = polydata[whereis+2]; int sym = polydata[whereis+3];
   array<int,3> arr;
   arr[0] = isize(hpc); arr[1] = rots; arr[2] = sym;
   symmetriesAt.emplace_back(arr);
+
+  // Set reading index to first actual point coordinate
   whereis += 4;
+  // Count how many coordinates the polygon has in total
   int qty = 0;
   while(polydata[whereis + 2*qty] != NEWSHAPE) qty++;
+
+  // Hardcoded scale and rotation parameters
   double shzoomx = shzoom;
   double shzoomy = shzoom;
   if(shzoom == WOLF) shzoomx = 1.5 * scalefactor, shzoomy = 1.6 * scalefactor;
   if(&sh == &cgi.shPikeBody) shzoomx *= 1.1, shzoomy *= 1.5;
   if(&sh == &cgi.shPikeEye) shzoomx *= 1.1, shzoomy *= 1.5;
+
   int rots2 = rots;
   // shapes 368..370 are specially designed
-  if(!(shapeid >= 368 && shapeid <= 370)) {
+  if(shapeid >= 368 && shapeid <= 370)
+    shzoomx *= bscale7, shzoomy *= bscale7;
+  else {
     if(flags&1) {
       rots2 = 6;
       }
@@ -320,9 +336,9 @@ void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int sha
       bonus += brot6;
       }
     }
-  else shzoomx *= bscale7, shzoomy *= bscale7;
   double bonusf = (rots-rots2+.0) / rots2;
 
+  // Extracts a single vertex position (x, y) from the global vector
   auto ipoint = [&] (int i, int mul) {
     hyperpoint h = hpxy(polydata[whereis+2*i] * shzoomx, polydata[whereis+2*i+1] * shzoomy * mul);
     if(rots == rots2 && !bonus) return h;
@@ -330,6 +346,8 @@ void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int sha
     return spin(bonus + bonusf * d) * h;
     };
 
+  // Inserts the vertex into the shape, possibly copying it multiple times
+  // according to its symmetry counts
   for(int r=0; r<rots2; r++) {
     for(int i=0; i<qty; i++)
       hpcpush(spin(TAU*r/rots2) * ipoint(i, 1));
@@ -337,7 +355,10 @@ void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int sha
     for(int i=qty-1; i>=0; i--)
       hpcpush(spin(TAU*r/rots2) * ipoint(i, -1));
     }
+  // Include first vertex again to make it a closed curve
   hpcpush(ipoint(0, 1));
+
+  // Done
   finishshape();
   }
 
