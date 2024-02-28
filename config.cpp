@@ -1000,22 +1000,23 @@ EX void addsaver(charstyle& cs, string s) {
   
 // R:239, G:208, B:207 
 
-unsigned int skincolors[]  = { 7, 0xD0D0D0FF, 0xEFD0C9FF, 0xC77A58FF, 0xA58869FF, 0x602010FF, 0xFFDCB1FF, 0xEDE4C8FF };
-unsigned int haircolors[]  = { 8, 0x686868FF, 0x8C684AFF, 0xF2E1AEFF, 0xB55239FF, 0xFFFFFFFF, 0x804000FF, 0x502810FF, 0x301800FF };
-unsigned int dresscolors[] = { 6, 0xC00000FF, 0x00C000FF, 0x0000C0FF, 0xC0C000FF, 0xC0C0C0FF, 0x202020FF };
-unsigned int dresscolors2[] = { 7, 0x8080FFC0, 0x80FF80C0, 0xFF8080C0, 0xFFFF80C0, 0xFF80FFC0, 0x80FFFFC0, 0xFFFFFF80 };
+unsigned int skincolors[]  = { 7, 0xD3ADADFF, 0xEFD0C9FF, 0xC77A58FF, 0xA58869FF, 0x602010FF, 0xFFDCB1FF, 0xEDE4C8FF };
+unsigned int haircolors[]  = { 8, 0xDD8175FF, 0x8C684AFF, 0xF2E1AEFF, 0xB55239FF, 0xFFFFFFFF, 0x804000FF, 0x502810FF, 0x301800FF };
+unsigned int dresscolors[] = { 6, 0x004545FF, 0x00C000FF, 0x0000C0FF, 0xC0C000FF, 0xC0C0C0FF, 0x202020FF };
+unsigned int dresscolors2[] = { 7, 0x2FB76FC0, 0x80FF80C0, 0xFF8080C0, 0xFFFF80C0, 0xFF80FFC0, 0x80FFFFC0, 0xFFFFFF80 };
 unsigned int swordcolors[] = { 6, 0xC0C0C0FF, 0xFFFFFFFF, 0xFFC0C0FF, 0xC0C0FFFF, 0x808080FF, 0x202020FF };
-unsigned int eyecolors[] = { 4, 0x00C000FF, 0x0000C0FF, 0xC00000FF, 0xC0C000FF, 0x804010FF, 0x00C000FF };
+unsigned int eyecolors[] = { 4, 0x82AA55FF, 0x0000C0FF, 0xC00000FF, 0xC0C000FF, 0x804010FF, 0x00C000FF };
 
 EX void initcs(charstyle &cs) {
-  cs.charid     = 0;
-  cs.skincolor  = 0xD0D0D0FF;
-  cs.haircolor  = 0x686868FF;
-  cs.dresscolor = 0xC00000FF;
+  cs.charid     = 1; // Blueshift mod: Be Linda by default
+  // Also change colors to look like Linda and Arnold
+  cs.skincolor  = 0xD3ADADFF;
+  cs.haircolor  = 0xDD8175FF;
+  cs.dresscolor = 0x004545FF;
   cs.swordcolor = 0xD0D0D0FF;
-  cs.dresscolor2= 0x8080FFC0;
+  cs.dresscolor2= 0x2FB76FC0;
   cs.uicolor    = 0xFF0000FF;
-  cs.eyecolor   = 0x603000FF;
+  cs.eyecolor   = 0x82AA55FF;
   cs.bowcolor   = 0x603000FF;
   cs.bowcolor2  = 0xFFD500FF;
   cs.lefthanded = false;

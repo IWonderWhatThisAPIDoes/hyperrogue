@@ -1464,6 +1464,11 @@ EX void drawPlayer(eMonster m, cell *where, const shiftmatrix& V, color_t col, d
       else {
         queuepoly(VHEAD, cgi.shPFace, fc(500, cs.skincolor, 1));
         queuepoly(VHEAD1, (cs.charid&1) ? cgi.shFemaleHair : cgi.shPHead, fc(150, cs.haircolor, 2));
+
+        // Blueshift mod: Linda should wear a hairband
+        if (cs.charid & 1) {
+          queuepoly(VHEAD2, cgi.shBlueshiftHairBand, cs.dresscolor);
+        }
         }      
       
       humanoid_eyes(V, cs.eyecolor, cs.skincolor);
