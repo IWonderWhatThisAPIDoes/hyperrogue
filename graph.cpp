@@ -1385,9 +1385,14 @@ EX void drawPlayer(eMonster m, cell *where, const shiftmatrix& V, color_t col, d
   
       if(cs.charid&1)
         queuepoly(VBODY1 * VBS, cgi.shFemaleDress, fc(500, cs.dresscolor, 4));
+      // Blueshift mod: Arnold gets a hoodie
+      else {
+        queuepoly(VBODY1 * VBS, cgi.shBlueshiftHoodie, fc(500, cs.dresscolor, 4));
+		    queuepoly(VBODY1 * VBS, cgi.shBlueshiftHoodieHood, darkena(fc(500, cs.dresscolor, 4) >> 8, 1, 0xff));
+        }
   
       if(cs.charid == 2)
-        queuepoly(VBODY2 * VBS, cgi.shPrinceDress,  fc(400, cs.dresscolor, 5));
+        queuepoly(VBODY2 * VBS, cgi.shPrinceDress,  fc(400, cs.dresscolor2, 5));
       if(cs.charid == 3) 
         queuepoly(VBODY2 * VBS, cgi.shPrincessDress,  fc(400, cs.dresscolor2, 5));
         
@@ -1467,7 +1472,7 @@ EX void drawPlayer(eMonster m, cell *where, const shiftmatrix& V, color_t col, d
 
         // Blueshift mod: Linda should wear a hairband
         if (cs.charid & 1) {
-          queuepoly(VHEAD2, cgi.shBlueshiftHairBand, cs.dresscolor);
+          queuepoly(VHEAD1, cgi.shBlueshiftHairBand, cs.dresscolor);
         }
         }      
       
@@ -1584,6 +1589,10 @@ void drawMimic(eMonster m, cell *where, const shiftmatrix& V, color_t col, doubl
     queuepoly(VHEAD, cgi.shPFace,  darkena(col, 0, 0XC0));
     if(cs.charid&1)
       queuepoly(VBODY1 * VBS, cgi.shFemaleDress,  darkena(col, 1, 0XC0));
+    else {
+      queuepoly(VBODY1 * VBS, cgi.shBlueshiftHoodie,  darkena(col, 1, 0XC0));
+      queuepoly(VBODY1 * VBS, cgi.shBlueshiftHoodieHood,  darkena(col, 2, 0XC0));
+      }
     if(cs.charid == 2)
       queuepoly(VBODY2 * VBS, cgi.shPrinceDress,  darkena(col, 1, 0XC0));
     if(cs.charid == 3)
@@ -1715,8 +1724,10 @@ EX bool drawMonsterType(eMonster m, cell *where, const shiftmatrix& V1, color_t 
           queuepoly(VBODY2 * VBS, cgi.shPrincessDress, (evil ? 0xC040C0C0 : 0x8080FFC0) | UNTRANS);
         }
       else {
+        queuepoly(VBODY1 * VBS, cgi.shBlueshiftHoodie,  evil ? 0xC000C0FF : 0x00C000FF);
+        queuepoly(VBODY1 * VBS, cgi.shBlueshiftHoodieHood,  evil ? 0x300030FF : 0x003000FF);
         if(vid.cs.charid < 2) 
-          queuepoly(VBODY1 * VBS, cgi.shPrinceDress,  evil ? 0x802080FF : 0x404040FF);
+          queuepoly(VBODY1 * VBS, cgi.shPrinceDress,  evil ? 0x802080C0 : 0x404040C0);
         }    
   
       if(m == moRoseLady) {

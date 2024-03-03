@@ -362,7 +362,7 @@ hpcshape
   hpcshape shCrossbow, shCrossbowBolt, shCrossbowstringLoaded, shCrossbowstringUnloaded, shCrossbowstringSemiloaded, shCrossbowIcon, shCrossbowstringIcon;
 
   // Blueshift mod
-  hpcshape shBlueshiftHairBand;
+  hpcshape shBlueshiftHairBand, shBlueshiftHoodie, shBlueshiftHoodieHood;
 
   hpcshape shReserved[16];
   
