@@ -1075,12 +1075,12 @@ void geometry_information::compute_cornerbonus() { }
 #if MAXMDIM >= 4
 
 /**
- * Projects a point onto the Beltrami-Klein disk
+ * Project a point onto the Beltrami-Klein disk for the purpose of ray tracing
  * https://en.wikipedia.org/wiki/Beltrami-Klein_model
  * 
  * @param h The point to project
- * @param id ID of the relevant face (direction) of a tile (used in Nil geometry)
- * @param pz Z coordinate of the point (used in product geometry)
+ * @param id Index of the relevant face (direction) of a tile (used in Nil geometry)
+ * @param pz Vertical (euclidean) coordinate of the point in product geometry (ignored in other geometries)
  * @return The projected point
  */
 hyperpoint ray_kleinize(hyperpoint h, int id, ld pz) {
@@ -1101,11 +1101,20 @@ hyperpoint ray_kleinize(hyperpoint h, int id, ld pz) {
   return kleinize(h);
   }
 
+/**
+ * Create a polygon of each 3D wall polygon type for a particular tile face.
+ * The polygons are stored in 3D wall polygon vectors (`shWall3D`, `shWireframe3D`, `shMiniWall3D`, and `shPlainWall3D`) 
+ * Different tile wall polygons generally correspond to individual faces of a tile
+ * 
+ * @param id Index of the tile face (and the target entry in the wall polygon vectors)
+ * @param vertices Vertices of the polygon that sets bounds of the wall
+ * @param weights 
+ */
 void geometry_information::make_wall(int id, vector<hyperpoint> vertices, vector<ld> weights) {
-
+  // Write down the index where parts of this wall start
   wallstart.push_back(isize(raywall));
 
-  // orient correctly
+  // Ensure that the vertices and their weights come in the correct order
   transmatrix T;
   set_column(T, 0, vertices[0]);
   set_column(T, 1, vertices[1]);
@@ -1115,14 +1124,20 @@ void geometry_information::make_wall(int id, vector<hyperpoint> vertices, vector
     reverse(vertices.begin(), vertices.end()),
     reverse(weights.begin(), weights.end());
 
+  // Initialize the wall polygon
   bshape(shWall3D[id], PPR::WALL);
   last->flags |= POLY_TRIANGLES | POLY_PRINTABLE;
-  
-  hyperpoint center = Hypc;
+
   int n = isize(vertices);
 
+  // A janky way to detect that the vertices should be interpreted as individual triangles
+  // If the third point is suspiciously close to the zeroth, assume they are triangles
   bool triangles = n > 3 && hypot_d(MDIM, vertices[0] - vertices[3]) < 1e-5;
 
+  // If in product geometry, decompose all points into their
+  // horizontal (hyperbolic) and vertical (euclidean) components
+  // Horizontal components remain in `vertices`, vertical will be placed into `altitudes`
+  // In any geometry other than product, `altitudes` remains filled with zeroes
   vector<ld> altitudes;
   altitudes.resize(n);
   if(gproduct) {
@@ -1137,28 +1152,35 @@ void geometry_information::make_wall(int id, vector<hyperpoint> vertices, vector
   
   if(cgflags & qIDEAL) for(auto& v: vertices) v = kleinize(v);
 
+  // Find center of mass of the polygon, and its altitude if in product space
   ld w = 0;
+  hyperpoint center = Hypc;
   for(int i=0; i<n; i++) center += vertices[i] * weights[i], w += weights[i];
   if(mproduct && !bt::in()) center = cgi.emb->normalize_flat(center);
   else center /= w;
-  
   ld center_altitude = 0;
   if(mproduct) for(int i=0; i<n; i++) center_altitude += altitudes[i] * weights[i] / w;
-  
+
+  // Leave the original center point aside, `center` will be further modified
   auto ocenter = center;
-  
+
   for(int a=0; a<n; a++) {
+    // Get a line segment given by two neighboring vertices
     int b = (a+1)%n;
-    if(triangles) center = normalize(vertices[a/3*3] * 5 + vertices[a/3*3+1] + vertices[a/3*3+2]);
-    
     hyperpoint v1 = vertices[a];
     hyperpoint v2 = vertices[b];
-    
+
+    // Triangle geometry: Get the offset center of the triangle
+    if(triangles) center = normalize(vertices[a/3*3] * 5 + vertices[a/3*3+1] + vertices[a/3*3+2]);
+
+    // For every line segment on non-triangle geometries,
+    // or for the line segment opposite of the vertex with greater weight on each triangle,
+    // make that segment a ray tracing wall
     if(!triangles || (a%6 == 1)) {
       auto kv1 = ray_kleinize(v1, id, altitudes[a]);
       auto kv2 = ray_kleinize(v2, id, altitudes[b]);
       auto kvc = ray_kleinize(ocenter, id, center_altitude);
-      transmatrix T = build_matrix(kv1, kv2, kvc, point31(1e-4,2e-4,7e-4)); // 11,.19,.3));
+      transmatrix T = build_matrix(kv1, kv2, kvc, point31(1e-4,2e-4,7e-4));
       T = inverse(T);
       raywall.push_back(T);
       }
@@ -1166,7 +1188,9 @@ void geometry_information::make_wall(int id, vector<hyperpoint> vertices, vector
     v1 = v1 - center;
     v2 = v2 - center;
     texture_order([&] (ld x, ld y) {
+      // Linear-interpolate within the triangle (bounded by the current line segment and the centerpoint)
       hyperpoint h = center + v1 * x + v2 * y;
+
       if(nil && (x || y))
         h = nilv::on_geodesic(center, nilv::on_geodesic(v1+center, v2+center, y / (x+y)), x + y);
       if(mproduct) {
@@ -1178,12 +1202,17 @@ void geometry_information::make_wall(int id, vector<hyperpoint> vertices, vector
       });
     }
 
+  // Close the wall polygon and move on to the wireframe polygon
   bshape(shWireframe3D[id], PPR::WALL);
   if(true) {
     int STEP = vid.texture_step;
     for(int a=0; a<n; a++) for(int y=0; y<STEP; y++) {
+      // Process each line segment in non-triangle geometries, or the far side of each triangle
       if(triangles && (a%3 != 1)) continue;
+
+      // Linear-interpolate along the line segment
       hyperpoint h = (vertices[a] * (STEP-y) + vertices[(a+1)%n] * y)/STEP;
+
       if(mproduct) {
         if(bt::in()) h = PIU( parabolic13(h) );
         h = orthogonal_move(cgi.emb->normalize_flat(h), (altitudes[a] * (STEP-y) + altitudes[(a+1)%n] * y) / STEP);
@@ -1194,11 +1223,15 @@ void geometry_information::make_wall(int id, vector<hyperpoint> vertices, vector
       else
         hpcpush(final_coords(h));
       }
+    // Repeat the first vertex to form a closed curve
     hpcpush(hpc[last->s]);
     }
 
+  // Close the wireframe polygon and open the mini-wall polygon
   bshape(shMiniWall3D[id], PPR::WALL);
   bshape(shMiniWall3D[id], PPR::WALL);
+
+  // Mini-wall polygon is just the wall polygon at half scale
   for(int a=shWall3D[id].s; a < shWall3D[id].e; a++)
     hpcpush(mid(C0, hpc[a]));
   if(shWall3D[id].flags & POLY_TRIANGLES)
@@ -1206,14 +1239,20 @@ void geometry_information::make_wall(int id, vector<hyperpoint> vertices, vector
   if(shWall3D[id].flags & POLY_PRINTABLE)
     last->flags |= POLY_PRINTABLE;
 
+  // Close the mini-wall polygon
   finishshape();
   
   shWall3D[id].intester = C0;
   shMiniWall3D[id].intester = C0;
 
-  shPlainWall3D[id] = shWall3D[id]; // force_triangles ? shWall3D[id] : shWireframe3D[id];
+  shPlainWall3D[id] = shWall3D[id];
   }
 
+/**
+ * Reserve space in 3D wall polygon vectors
+ * 
+ * @param i How many polygons we want to fit
+ */
 void geometry_information::reserve_wall3d(int i) {
   shWall3D.resize(i);
   shPlainWall3D.resize(i);
@@ -1222,8 +1261,15 @@ void geometry_information::reserve_wall3d(int i) {
   walltester.resize(i);
   }
 
+/**
+ * Populate the all 3D wall polygon vectors (`shWall3D`, `shWireframe3D`, `shMiniWall3D`, and `shPlainWall3D`)
+ * with polygons for all tile face walls
+ */
 void geometry_information::create_wall3d() {
+  // 3D walls are not relevant in 2D space
   if(WDIM == 2) return;
+
+  // Make space for the entries in the wall polygon vectors
   reserve_wall3d(kite::in() ? 22 : mhybrid ? 0 : S7);
   
   if(mhybrid) {
@@ -1264,6 +1310,9 @@ void geometry_information::create_wall3d() {
   compute_cornerbonus();
   }
 
+/**
+ * Calculate the maximum distance of any 3D wall vertex from the origin
+ */
 void geometry_information::compute_cornerbonus() {
   corner_bonus = 0;
   for(hpcshape sh: shWall3D) for(int i=sh.s; i<sh.e; i++)
