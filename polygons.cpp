@@ -15,17 +15,28 @@ static constexpr ld NEWSHAPE = (-13.5);
 #endif
 static constexpr ld WOLF = (-15.5);
 
+/**
+ * Subdivide a line between two ideal points by adding more points between them
+ */
 void geometry_information::hpc_connect_ideal(hyperpoint a, hyperpoint b) {
+  // Get normalized angle between projected positions of vertices
   ld left = -atan2(a);
   ld right = -atan2(b);
   cyclefix(right, left);
+
+  // Subdivide the line
   /* call hpc.push_back directly to avoid adding points */
   ld qty = ceil(abs(right-left) / ideal_each);
   for(int i=0; i<=qty; i++) hpc.push_back(xspinpush0(lerp(left, right, i/qty), ideal_limit));
   }
 
+/**
+ * Push a vertex into the render vertex buffer of the current polygon.
+ * More support vertices might be added.
+ */
 void geometry_information::hpcpush(hyperpoint h) {
 
+  // In 3D or if the current polygon is made of separate triangles: just add the vertex
   if(GDIM == 3 || (last->flags & POLY_TRIANGLES)) {
     hpc.push_back(h);
     return;
@@ -34,9 +45,12 @@ void geometry_information::hpcpush(hyperpoint h) {
   ld error_threshold = euclid ? 1000 : 1e10;
   ld threshold = (sphere ? (ISMOBWEB || NONSTDVAR ? .04 : .001) : 0.1) * pow(.25, vid.linequality);
 
+  // First vertex
+  // Everything needs to be initialized, but that's it
   if(first) {
     starting_ideal = starting_point = last_point = last_ideal = h;
     first = false;
+
     int c = safe_classify_ideals(h);
     if(c == 0) {
       starting_ideal = safe_approximation_of_ideal(h);
@@ -46,12 +60,19 @@ void geometry_information::hpcpush(hyperpoint h) {
       hpc.push_back(starting_ideal = starting_point = last_point = last_ideal = normalize(h));
       }
     }
+
+  // Otherwise make sure a line segment between the vertices renders properly
   else {
     int c1 = safe_classify_ideals(last_point);
     int c2 = safe_classify_ideals(h);
+
+    // Line between two ideal points
     if(c1 > 0 && c2 > 0) {
       h = normalize(h);
       ld i = intval(last_point, h);
+
+      // If the line is too long, subdivide it by adding more vertices
+      // (recursively, ugh)
       if(i > threshold && i < error_threshold) {
         hyperpoint md = mid(hpc.back(), h);
         hpcpush(md);
@@ -63,10 +84,15 @@ void geometry_information::hpcpush(hyperpoint h) {
         last_point = last_ideal = h;
         }
       }
+
+    // From ideal to material point
     else if(c1 > 0 && c2 <= 0) {
+      // If the line is too long, subdivide it by adding more vertices
       for(ld t = threshold; t < ideal_limit; t += threshold) hpc.push_back(last_ideal = towards_inf(last_point, h, t));
       last_point = h;
       }
+
+    // From material to ideal point
     else if(c1 <= 0 && c2 > 0) {
       hyperpoint next_ideal = towards_inf(h, last_point, ideal_limit);
       hpc_connect_ideal(last_ideal, next_ideal);
@@ -74,6 +100,8 @@ void geometry_information::hpcpush(hyperpoint h) {
       for(; t > threshold/2; t -= threshold) hpc.push_back(towards_inf(h, last_point, t));
       last_point = last_ideal = h;
       }
+
+    // Between two material points
     else if(c1 <= 0 && c2 <= 0) {
       hyperpoint p = closest_to_zero(last_point, h);
       indenter ind(2);
@@ -90,29 +118,56 @@ void geometry_information::hpcpush(hyperpoint h) {
     }
   }
 
+/**
+ * Turns the current polygon into a vertical wall.
+ * 
+ * In 2D geometry, this is done by turning the polygon into double-stroke
+ * by duplicating its vertices and offsetting them inwards and outwards from the origin.
+ * 
+ * In other geometries, the polygon is turned into an actual vertical wall
+ * 
+ * @param fol Height of one edge of the wall
+ * @param fol2 Height of the other edge of the wall
+ * @param k Unused
+ */
 void geometry_information::chasmifyPoly(double fol, double fol2, int k) {
+  // 2D geometry: make the polygon double-stroke
   if(GDIM == 2) {
+     // Duplicate each point and offset them inwards and outwards
      for(int i=isize(hpc)-1; i >= last->s; i--) {
        hpc.push_back(orthogonal_move_fol(hpc[i], fol));
        hpc[i] = orthogonal_move_fol(hpc[i], fol2);
        }
+     // Repeat the first point (after offsetting) to form a closed curve correctly
      hpc.push_back(hpc[last->s]);
+     // Prevent rendering in inverse, not sure why
      last->flags |= POLY_ISSIDE;
      }
+
+  // Any other geometry: construct a vertical wall around the polygon
   else {
+    // Extract all points of the last polygon and map them to logical space
     vector<hyperpoint> points;
     for(int s = last->s; s<isize(hpc); s++) points.push_back(cgi.emb->actual_to_logical( hpc[s] ));
+    // Erase the polygon from the vertex buffer
+    // TODO: This could clash badly with `copyshape`, which shallow-copies a polygon
     hpc.resize(last->s);
+    last->s = isize(hpc);
+
     last->flags |= POLY_TRIANGLES;
     last->texture_offset = 0;
-    last->s = isize(hpc);
+
+    // Push the vertices back into the buffer
     auto at = [&] (ld x, ld y) {
+      // Dark magic
       x *= (isize(points) - 1);
       int zf = int(x);
       if(zf == isize(points)-1) zf--;
       x -= zf;
       auto hp = points[zf] + (points[zf+1] - points[zf]) * x;
       hp[2] = fol + (fol2-fol) * y;
+
+      // Map back to real space and commit
       auto hf = cgi.emb->logical_to_actual(hp);
       hpcpush(hf);
       };
@@ -123,6 +178,9 @@ void geometry_information::chasmifyPoly(double fol, double fol2, int k) {
     }
   }
 
+/**
+ * Shifts all vertices in a polygon by a specified offset
+ */
 void geometry_information::shift(hpcshape& sh, double dx, double dy, double dz) {
   hyperpoint H = hpxyz(dx, dy, dz);
   transmatrix m = rgpushxto0(H);
@@ -130,6 +188,10 @@ void geometry_information::shift(hpcshape& sh, double dx, double dy, double dz) 
     hpc[i] = m * hpc[i];
   }
 
+/**
+ * If using GL for rendering, transform all vertices into GL vertices
+ * and send them to a vertex buffer
+ */
 void geometry_information::initPolyForGL() {
 #if CAP_GL
   ourshape.clear();
@@ -141,6 +203,10 @@ void geometry_information::initPolyForGL() {
 #endif
   }
 
+/**
+ * If using GL for rendering, add all vertices to the GL vertex buffer
+ * that have not yet been added by a previous call to `initPolyForGL` or `extra_vertices`
+ */
 void geometry_information::extra_vertices() {
 #if CAP_GL
   while(isize(ourshape) < isize(hpc))
@@ -151,34 +217,74 @@ void geometry_information::extra_vertices() {
 #endif
   }
 
+/**
+ * Construct a transformation matrix for translation given by direction and magnitude
+ * 
+ * @param a Translation direction, as number of steps of rotational symmetry of a tile
+ * @param x Translation displacement
+ * @return Transformation matrix
+ */
 transmatrix geometry_information::ddi(int a, ld x) { return xspinpush(a * S_step, x); }
 
+/**
+ * Populate the current polygon with a tentacle/worm shape
+ * (a corrugated rectangle that spans a whole tile)
+ * 
+ * @param h Unused
+ * @param rad Half-width of the tentacle
+ * @param var Half-height of the groves on the tentacle
+ * @param divby Half-length of the groves on the tentacle
+ * 
+ * @pre
+ *            +---+ 2*divby
+ *            v   v
+ *       +-> _   _   _   _
+ * 2*var +->  \_/ \_/ \_/ <--+
+ *                           |
+ *           _   _   _   _   | 2*rad
+ *            \_/ \_/ \_/ <--+
+ * @pre
+ */
 void geometry_information::drawTentacle(hpcshape &h, ld rad, ld var, ld divby) {
+  // Figure out the length of the tentacle, depending on tiling parameters
   double tlength = max(crossf, hexhexdist);
   if(geometry == gBinaryTiling) tlength *= 0.7;
   if(geometry == gBinary4) tlength *= 0.45;
   #if CAP_ARCM
   if(arcm::in()) tlength = arcm::current.scale();
   #endif
+
+  // Put down all vertices at an orthogonal (first ddi) and longitudial (second ddi) offset
   int max = int(20 * pow(2, vid.linequality));
   for(ld i=0; i<=max; i++)
     hpcpush(ddi(S21, rad + var * sin(i * M_PI/divby)) * ddi(0, tlength * i/max) * C0);
   for(ld i=max; i>=0; i--)
     hpcpush(ddi(S21*3, rad - var * sin(i * M_PI/divby)) * ddi(0, tlength * i/max) * C0);
+  
+  // Repeat the first vertex to form a closed curve
   hpcpush(ddi(S21, rad + var * sin(0 * M_PI/divby)) * C0);
   }
 
+/**
+ * Construct a point from its coordinates.
+ * Scale-factor-aware
+ */
 hyperpoint geometry_information::hpxyzsc(double x, double y, double z) {
   return hpxd(scalefactor, x,y,z);
   }
 
+// Unused
 hyperpoint geometry_information::turtlevertex(int u, double x, double y, double z) {
   ld scale = BITRUNCATED ? 1 : scalefactor;
   if(u) scale /= 2;
   return hpxd(scale, x, y, z);
   }
 
+/**
+ * Finalize the polygon that is currently being constructed
+ */
 void geometry_information::finishshape() {
+  // Bail if there is no polygon being constructed
   if(!last) return;
 
   if(!first && safe_classify_ideals(starting_point) <= 0 && sqhypot_d(LDIM, starting_point - last_point) < 1e-9)
@@ -257,7 +363,14 @@ void geometry_information::finishshape() {
     printf("bad end\n"); */
   }
 
+/**
+ * Open a new polygon and await vertex data
+ * 
+ * @param sh The polgon that will be filled
+ * @param prio Rendering priority (layer) of the polygon
+ */
 void geometry_information::bshape(hpcshape& sh, PPR prio) {
+  // Close the previous polygon if any
   if(last) finishshape();
   hpc.push_back(hpxy(0,0));
   last = &sh;
@@ -268,8 +381,18 @@ void geometry_information::bshape(hpcshape& sh, PPR prio) {
   first = true;
   }
 
-
+/**
+ * Create a polygon with vertex data from the global vertex vector
+ * 
+ * @param sh The polygon that will be filled
+ * @param prio Rendering priority (layer) of the polygon
+ * @param shzoom Scale factor override
+ * @param shapeid ID of the polygon. Used to look up the vertex data in the global vertex vector
+ * @param bonus 
+ * @param flags 
+ */
 void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int shapeid, double bonus, flagtype flags) {
+  // Initialize empty polygon
   bshape(sh, prio);
 
   // Find the polygon data in the global vector
@@ -362,14 +485,36 @@ void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int sha
   finishshape();
   }
 
+/**
+ * Duplicate a polygon with a different rendering priority (layer).
+ * A shallow copy - the new polygon will be referencing the same vertices in the vertex buffer
+ * 
+ * @param sh The polygon that will be filled
+ * @param orig The polygon that will be copied
+ * @param prio New rendering priority (layer)
+ */
 void geometry_information::copyshape(hpcshape& sh, hpcshape& orig, PPR prio) {
+  // Mark the end of the vertex range for a currently open polygon
+  // (presumably in case &orig == last?)
   if(last) last->e = isize(hpc);
+
+  // Shallow copy
   sh = orig; sh.prio = prio;
   }
 
+/**
+ * Duplicate a polygon with a different scale factor
+ * 
+ * @param old The polygon that will be copied
+ * @param newsh The polygon that will be filled
+ * @param factor Scale factor relative to the original polygon
+ * @param prio New rendering priority (layer)
+ */
 void geometry_information::zoomShape(hpcshape& old, hpcshape& newsh, double factor, PPR prio) {
-
+  // Initialize new empty shape
   bshape(newsh, prio);
+
+  // Copy vertices and scale them by the provided factor
   for(int i=old.s; i<old.e; i++) {
     hyperpoint H = hpc[i];
     H = hpxyz(factor*H[0], factor*H[1], H[2]);
@@ -378,23 +523,53 @@ void geometry_information::zoomShape(hpcshape& old, hpcshape& newsh, double fact
     }
   }
 
-ld gsca() { return 1; }
-ld grot() { return 0; }
-
+/**
+ * Shorthand for calculation of a conditional accumulative scale factor.
+ * 
+ * Arguments to this function should come in pairs of booleans (the condition)
+ * and doubles (the scale factor).
+ * Each scale factor is counted in if and only if its condition evaluates to true.
+ * 
+ * @return Total scale factor
+ * 
+ * @example `gsca() == 1.0`
+ * @example `gsca(true, 2.0) == 2.0`
+ * @example `gsca(true, 2.0, false, 3.0) == 2.0`
+ * @example `gsca(true, 2.0, true, 3.0) == 6.0`
+ */
 template<class... T> ld gsca(bool geometry, ld factor, T... t) {
   if(geometry) return factor * gsca(t...);
   else return gsca(t...);
   }
+ld gsca() { return 1; }
 
+/**
+ * Shorthand for calculation of a conditional accumulative rotation angle.
+ * 
+ * Arguments to this function should come in pairs of booleans (the condition)
+ * and doubles (the rotation angle).
+ * Each rotation is counted in if and only if its condition evaluates to true.
+ * 
+ * @return Total rotation angle
+ * 
+ * @example `gsca() == 0.0`
+ * @example `gsca(true, 2.0) == 2.0`
+ * @example `gsca(true, 2.0, false, 3.0) == 2.0`
+ * @example `gsca(true, 2.0, true, 3.0) == 5.0`
+ */
 template<class... T> ld grot(bool geometry, ld factor, T... t) {
   if(geometry) return factor + grot(t...);
   else return grot(t...);
   }
+ld grot() { return 0; }
 
 #if HDR
 #define SHADMUL (S3==4 ? 1.05 : 1.3)
 #endif
 
+/**
+ * Populate terrain height data and construct polygons for tile side walls
+ */
 void geometry_information::make_sidewalls() {
   for(int i=0; i<=3; i++)
     dfloor_table[i] = SLEV[i];
@@ -432,6 +607,9 @@ void geometry_information::make_sidewalls() {
     }
   }
 
+/**
+ * Populate all polygons that are defined procedurally (not from the global vertex vector)
+ */
 void geometry_information::procedural_shapes() {
   bshape(shMovestar, PPR::MOVESTAR);
   for(int i=0; i<=8; i++) {
@@ -896,10 +1074,19 @@ void geometry_information::compute_cornerbonus() { }
 
 #if MAXMDIM >= 4
 
-// Make a wall
-
+/**
+ * Projects a point onto the Beltrami-Klein disk
+ * https://en.wikipedia.org/wiki/Beltrami-Klein_model
+ * 
+ * @param h The point to project
+ * @param id ID of the relevant face (direction) of a tile (used in Nil geometry)
+ * @param pz Z coordinate of the point (used in product geometry)
+ * @return The projected point
+ */
 hyperpoint ray_kleinize(hyperpoint h, int id, ld pz) {
+  // Nil geometry: Truncate the Z coordinate if in cardinal direction, I think
   if(nil && among(id, 2, 5)) h[2] = 0;
+
   #if CAP_BT
   if(hyperbolic && bt::in()) {
     // ld co = vid.binary_width / log(2) / 4;
@@ -1665,6 +1852,19 @@ void geometry_information::prepare_shapes() {
   initPolyForGL();
   }
 
+/**
+ * Vertex data for all polygons.
+ * Entries for individual polygons are laid out back-to-back in a single vector.
+ * 
+ * Structure of an entry:
+ * - `NEWSHAPE` - a terminator that does not appear anywhere else in the vector
+ * - Polygon ID - used for lookup in the vector
+ * - Number of rotational symmetries
+ * - Number of axial symmetries
+ * - Coordinates of vertices of the polygon - x, y, x, y...
+ * 
+ * The whole vector is terminated by two `NEWSHAPE` terminators in a row
+ */
 EX vector<long double> polydata = {
 // shStarFloor[0] (6x1)
 NEWSHAPE,   1,6,1, 0.267355,0.153145, 0.158858,0.062321, 0.357493,-0.060252,
