@@ -8,6 +8,9 @@ namespace hr {
 
 eGeometry gJanko1(eGeometry(-1));
 
+/**
+ * A 7x7 matrix in GF(11) aritmetic.
+*/
 struct jmatrix : array<array<int, 7>, 7> {
   jmatrix operator * (const jmatrix other) {
     jmatrix res;
@@ -28,7 +31,9 @@ struct jmatrix : array<array<int, 7>, 7> {
     }
   };
 
+/** A vector storing all the matrices in the Janko group. */
 vector<jmatrix> jms;
+/** A map from Janko group elements to their indices in the `jms` vector. */
 std::map<jmatrix, int> ids;
 
 jmatrix J, Z, id;
@@ -47,9 +52,11 @@ void build_group(const jmatrix& m) {
   }
 
 void build() {
+  // A shift permutation matrix
   for(int a=0; a<7; a++)
   for(int b=0; b<7; b++) J[a][b] = ((a+1-b)%7 == 0) ? 1 : 0;
   
+  // Another group generator
   int v[49] = {
     0,  4,  0,  3,  9,  2,  1, 
     4,  0,  4,  3,  7,  1,  3, 
@@ -58,7 +65,7 @@ void build() {
     9,  7,  9,  7,  0,  9, 10, 
     2,  1,  8,  6,  9,  2,  3, 
     1,  3,  1,  9, 10,  3,  8, 
-/*    -3,+2,-1,-1,-3,-1,-3,
+/*  -3,+2,-1,-1,-3,-1,-3,
     -2,+1,+1,+3,+1,+3,+3,
     -1,-1,-3,-1,-3,-3,+2,
     -1,-3,-1,-3,-3,+2,-1,

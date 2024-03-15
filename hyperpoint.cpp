@@ -264,10 +264,18 @@ bool trans23::operator == (const trans23& b) const { return eqmatrix(v2, b.v2) &
 // basic functions and types
 //===========================
 
+/** Squares a value */
 EX ld squar(ld x) { return x*x; }
 
 EX int sig(int z) { return ginf[geometry].g.sig[z]; }
 
+/**
+ * Returns the curvature of a given geometry.
+ * For euclidean geometry: `0`
+ * For hyperbolic geometry: `-1`
+ * For spherical geometry: `1`
+ * For product geometry: Curvature depending on the underlying geometry
+*/
 EX int curvature() {
   switch(cgclass) {
     case gcEuclid: return 0;
@@ -278,6 +286,15 @@ EX int curvature() {
     }
   }
 
+/** Computes a geometry-specific "sine"
+ * For euclidean geometry: `x`
+ * For hyperbolic geometry: `sinh`
+ * For spherical geometry: `sin`
+ * For product geometry: ??? Something depending on the underlying geometry
+ * For SL2 geometry: `sinh`
+ * 
+ * See also: asin_auto, cos_auto, acos_auto, tan_auto, atan_auto
+*/
 EX ld sin_auto(ld x) {
   switch(cgclass) {
     case gcEuclid: return x;
@@ -289,6 +306,15 @@ EX ld sin_auto(ld x) {
     }
   }
 
+/** Computes a geometry-specific inverse "sine"
+ * For euclidean geometry: `x`
+ * For hyperbolic geometry: `asinh`
+ * For spherical geometry: `asin`
+ * For product geometry: ??? Something depending on the underlying geometry
+ * For SL2 geometry: `asinh`
+ * 
+ * See also: sin_auto
+*/
 EX ld asin_auto(ld x) {
   switch(cgclass) {
     case gcEuclid: return x;
@@ -300,6 +326,15 @@ EX ld asin_auto(ld x) {
     }
   }
 
+/** Computes a geometry-specific inverse "cosine"
+ * For euclidean geometry: `x`
+ * For hyperbolic geometry: `acosh`
+ * For spherical geometry: `acos`
+ * For product geometry: ??? Something depending on the underlying geometry
+ * For SL2 geometry: `acosh`
+ * 
+ * See also: sin_auto
+*/
 EX ld acos_auto(ld x) {
   switch(cgclass) {
     case gcHyperbolic: return acosh(x);
@@ -336,8 +371,10 @@ EX ld wvolarea_auto(ld r) {
   else return area_auto(r);
   }
 
+/** Computes the inverse sine function, clamping the input to a nearest valid argument */
 EX ld asin_clamp(ld x) { return x>1 ? 90._deg : x<-1 ? -90._deg : std::isnan(x) ? 0 : asin(x); }
 
+/** Computes the inverse sine function, clamping the input to a nearest valid argument */
 EX ld acos_clamp(ld x) { return x>1 ? 0 : x<-1 ? M_PI : std::isnan(x) ? 0 : acos(x); }
 
 EX ld asin_auto_clamp(ld x) {
@@ -361,6 +398,15 @@ EX ld acos_auto_clamp(ld x) {
     }
   }
 
+/** Computes a geometry-specific "cosine"
+ * For euclidean geometry: `x`
+ * For hyperbolic geometry: `cosh`
+ * For spherical geometry: `cos`
+ * For product geometry: ??? Something depending on the underlying geometry
+ * For SL2 geometry: `cosh`
+ * 
+ * See also: sin_auto
+*/
 EX ld cos_auto(ld x) {
   switch(cgclass) {
     case gcEuclid: return 1;
@@ -372,6 +418,16 @@ EX ld cos_auto(ld x) {
     }
   }
 
+
+/** Computes a geometry-specific "tangens"
+ * For euclidean geometry: `x`
+ * For hyperbolic geometry: `tanh`
+ * For spherical geometry: `tan`
+ * For product geometry: ??? Something depending on the underlying geometry
+ * For SL2 geometry: `tanh`
+ * 
+ * See also: sin_auto
+*/
 EX ld tan_auto(ld x) {
   switch(cgclass) {
     case gcEuclid: return x;
@@ -383,6 +439,15 @@ EX ld tan_auto(ld x) {
     }
   }
 
+/** Computes a geometry-specific inverse "tangens"
+ * For euclidean geometry: `x`
+ * For hyperbolic geometry: `atanh`
+ * For spherical geometry: `atan`
+ * For product geometry: ??? Something depending on the underlying geometry
+ * For SL2 geometry: `atanh`
+ * 
+ * See also: sin_auto, atan2_auto
+*/
 EX ld atan_auto(ld x) {
   switch(cgclass) {
     case gcEuclid: return x;
@@ -446,7 +511,6 @@ EX bool zero_d(int d, hyperpoint h) {
  *  through the interior, not on the surface)
  *  also used to verify whether a point h1 is on the hyperbolic plane by using Hypc for h2
  */
-
 EX ld intval(const hyperpoint &h1, const hyperpoint &h2) {
   ld res = 0;
   for(int i=0; i<MDIM; i++) res += squar(h1[i] - h2[i]) * sig(i);
@@ -568,6 +632,11 @@ EX ld zlevel(const hyperpoint &h) {
   else return (h[LDIM] < 0 ? -1 : 1) * sqrt(-intval(h, Hypc));
   }
 
+/** 
+ * Computes the hypotenouse of a right angle triangle with sides `x` and `y`
+ * https://en.wikipedia.org/wiki/Pythagorean_theorem#Non-Euclidean_geometry
+ * Hyperbolic curvature is -1 and spherical curvature is +1 \see curvature()
+ */
 EX ld hypot_auto(ld x, ld y) {
   switch(cgclass) {
     case gcEuclid:
@@ -671,6 +740,15 @@ EX transmatrix random_spin() {
   else return random_spin3();
   }
 
+/**
+ * Translation matrix in euclidean space. (?)
+ * 
+ * Example for LDIM == 4:
+ * [1,0,0,x]
+ * [0,1,0,y]
+ * [0,0,1,0]
+ * [0,0,0,1]
+ */
 EX transmatrix eupush(ld x, ld y) {
   transmatrix T = Id;
   T[0][LDIM] = x;
@@ -678,6 +756,14 @@ EX transmatrix eupush(ld x, ld y) {
   return T;
   }
 
+/**
+ * Translation matrix in euclidean space.
+ * Example for LDIM == 4:
+ * [1,0,0,x]
+ * [0,1,0,y]
+ * [0,0,1,z]
+ * [0,0,0,1]
+ */
 EX transmatrix euclidean_translate(ld x, ld y, ld z) {
   transmatrix T = Id;
   T[0][LDIM] = x;
@@ -686,6 +772,9 @@ EX transmatrix euclidean_translate(ld x, ld y, ld z) {
   return T;
   }
 
+/**
+ * Scaling matrix for x and y axes in euclidean space.
+ */
 EX transmatrix euscale(ld x, ld y) {
   transmatrix T = Id;
   T[0][0] = x;
@@ -693,6 +782,9 @@ EX transmatrix euscale(ld x, ld y) {
   return T;
   }
 
+/**
+ * Scaling matrix in 3D euclidean space.
+ */
 EX transmatrix euscale3(ld x, ld y, ld z) {
   transmatrix T = Id;
   T[0][0] = x;
@@ -730,6 +822,9 @@ EX transmatrix euaffine(hyperpoint h) {
   return T;
   }
 
+/**
+ * 
+ */
 EX transmatrix cpush(int cid, ld alpha) {
   if(gproduct && cid == 2)
     return scale_matrix(Id, exp(alpha));
@@ -751,6 +846,14 @@ EX transmatrix cmirror(int cid) {
 // push alpha units to the right
 EX transmatrix xpush(ld alpha) { return cpush(0, alpha); }
 
+/**
+ * Tests whether two transformation matrices are equal within some epsilon.
+ * @param A first matrix
+ * @param B second matrix
+ * @param eps epsilon to use in the comparison
+ * 
+ * @return Returns false if any element of the difference `A - B` has an absolute value greater than `eps`, true otherwise.
+*/
 EX bool eqmatrix(transmatrix A, transmatrix B, ld eps IS(.01)) {
   for(int i=0; i<MXDIM; i++)
   for(int j=0; j<MXDIM; j++)
@@ -764,6 +867,13 @@ EX transmatrix ypush(ld alpha) { return cpush(1, alpha); }
 
 EX transmatrix zpush(ld z) { return cpush(2, z); }
 
+/**
+ * Constructs a 3x3 matrix out of given parameters in reading order.
+ * If `MAXMDIM==3`, constructs a 3x3 matrix
+ * Else it constructs a 4x4 matrix by adding a row+column filled with 0s on the off-diagonal and 1 on the diagonal.
+ * If `GDIM == 2 || MDIM == 3` then the addition is the 4th row and column.
+ * Else it is inserted into the 3rd row and column.
+*/
 EX transmatrix matrix3(ld a, ld b, ld c, ld d, ld e, ld f, ld g, ld h, ld i) {
   #if MAXMDIM==3
   return transmatrix {{{a,b,c},{d,e,f},{g,h,i}}};
@@ -775,6 +885,10 @@ EX transmatrix matrix3(ld a, ld b, ld c, ld d, ld e, ld f, ld g, ld h, ld i) {
   #endif
   }
 
+/**
+ * Constructs a 4x4 matrix out of given parameters in reading order.
+ * If `MAXMDIM==3`, constructs a 3x3 matrix instead by skipping the 3rd column and row.
+*/
 EX transmatrix matrix4(ld a, ld b, ld c, ld d, ld e, ld f, ld g, ld h, ld i, ld j, ld k, ld l, ld m, ld n, ld o, ld p) {
   #if MAXMDIM==3
   return transmatrix {{{a,b,d},{e,f,h},{m,n,p}}};
@@ -934,7 +1048,10 @@ EX hyperpoint get_column(transmatrix& T, int i) {
   return h;
   }
 
-/** build a matrix using the given vectors as columns */
+/** 
+ * Build a matrix using the given vectors as columns.
+ * If `MAXDIM != 4` the last argument is skipped. 
+ */
 EX transmatrix build_matrix(hyperpoint h1, hyperpoint h2, hyperpoint h3, hyperpoint h4) {
   transmatrix T;
   for(int i=0; i<MXDIM; i++) {
@@ -949,7 +1066,6 @@ EX transmatrix build_matrix(hyperpoint h1, hyperpoint h2, hyperpoint h3, hyperpo
 /** for H on the X axis, this matrix pushes C0 to H
  *  \see rgpushxto0
  */
-
 EX transmatrix rpushxto0(const hyperpoint& H) {
   transmatrix T = Id;
   T[0][0] = +H[LDIM]; T[0][LDIM] = H[0];
@@ -999,7 +1115,6 @@ EX shiftmatrix rgpushxto0(const shiftpoint& H) {
  *  The numerical errors tend to accumulate, eventually destroying the projection.
  *  This function fixes this problem by replacing T with a 'correct' isometry.
  */
-
 EX void fixmatrix(transmatrix& T) {
   if(nonisotropic) ; // T may be inverse... do not do that
   else if(cgflags & qAFFINE) ; // affine
@@ -1156,7 +1271,7 @@ EX transmatrix ortho_inverse(transmatrix T) {
   return T;
   }
 
-/** \brief inverse of an orthogonal matrix in Minkowski space */
+/** \brief inverse of an pseudo-orthogonal matrix in Minkowski space (a O(3;1) transformation) */
 EX transmatrix pseudo_ortho_inverse(transmatrix T) {
   for(int i=1; i<MXDIM; i++)
     for(int j=0; j<i; j++)
@@ -1222,6 +1337,7 @@ EX transmatrix iview_inverse(transmatrix T) {
   return iso_inverse(T);
   }
 
+/** Decomposes a point in product geometry into a z component and a remainder, which gets scaled */
 EX pair<ld, hyperpoint> product_decompose(hyperpoint h) {
   ld z = zlevel(h);
   return make_pair(z, scale_point(h, exp(-z)));
@@ -1361,7 +1477,7 @@ EX shiftmatrix orthogonal_move(const shiftmatrix& t, double level) {
   return shiftless(orthogonal_move(t.T, level), t.shift);
   }
 
-/** fix a 3x3 matrix into a 4x4 matrix, in place */
+/** fix a 3x3 matrix into a 4x4 matrix, in place (makes the last row and column into [0,0,0,1]) */
 EX void fix4(transmatrix& t) {
   #if MAXMDIM > 3
   if(ldebug) println(hlog, "fix4 performed");
@@ -1372,6 +1488,7 @@ EX void fix4(transmatrix& t) {
 /** fix a 3x3 matrix into a 4x4 matrix, as a function */
 EX transmatrix fix4_f(transmatrix t) { fix4(t); return t; }
 
+/** Forms a matrix that scales x and y directions by `fac` */
 EX transmatrix xyscale(const transmatrix& t, double fac) {
   transmatrix res;
   for(int i=0; i<MXDIM; i++) {
@@ -1383,6 +1500,7 @@ EX transmatrix xyscale(const transmatrix& t, double fac) {
   return res;
   }
 
+/** Forms a matrix that scales x, y directions by `fac` and z direction by `facz` (?) */
 EX transmatrix xyzscale(const transmatrix& t, double fac, double facz) {
   transmatrix res;
   for(int i=0; i<MXDIM; i++) {
@@ -1422,6 +1540,7 @@ EX hyperpoint mid3(hyperpoint h1, hyperpoint h2, hyperpoint h3) {
   return mid(h1+h2+h3, h1+h2+h3);
   }
 
+/** PROBABLY Get a point on a line segment between h1 and h2 described by parameter v (between 0 and 1) */
 EX hyperpoint mid_at(hyperpoint h1, hyperpoint h2, ld v) {
   hyperpoint h = h1 * (1-v) + h2 * v;
   return mid(h, h);
@@ -1566,6 +1685,7 @@ EX shiftmatrix spin_towards(const shiftmatrix Position, transmatrix& ori, const 
   return shiftless(spin_towards(Position.T, ori, unshift(goal, Position.shift), dir, back), Position.shift);
   }
 
+/** Computes the sum of square errors deviation between (T^Trans * T) and the identity matrix. (For an orthogonal matrix this should be 0.) */
 EX ld ortho_error(transmatrix T) {
 
   ld err = 0;
@@ -1634,7 +1754,7 @@ EX hyperpoint xtangent(ld x) { return ctangent(0, x); }
 /** tangent vector in direction Z */
 EX hyperpoint ztangent(ld z) { return ctangent(2, z); }
 
-/** change the length of the targent vector */
+/** change the length of the tangent vector */
 EX hyperpoint tangent_length(hyperpoint dir, ld length) {
   ld r = hypot_d(GDIM, dir);
   if(!r) return dir;
@@ -1705,6 +1825,7 @@ EX hyperpoint inverse_exp_newton(hyperpoint h, int iter) {
   return approx;
   }
 
+/** Computes the distance along a geodesic between two points */
 EX ld geo_dist(const hyperpoint h1, const hyperpoint h2, flagtype prec IS(pNORMAL)) {
   if(!nonisotropic) return hdist(h1, h2);
   return hypot_d(3, inverse_exp(shiftless(nisot::translate(h1, -1) * h2, prec)));
@@ -1731,11 +1852,13 @@ EX hyperpoint lp_apply(const hyperpoint h) {
 
 EX hyperpoint smalltangent() { return xtangent(.1); }
 
+/** Fix an angle `a` such that it is within +-PI range of `b` */
 EX void cyclefix(ld& a, ld b) {
   while(a > b + M_PI) a -= TAU;
   while(a < b - M_PI) a += TAU;
   }
 
+/** PROBABLY computes the radian distance between angles `a` and `b` */
 EX ld raddif(ld a, ld b) {
   ld d = a-b;
   if(d < 0) d = -d;
