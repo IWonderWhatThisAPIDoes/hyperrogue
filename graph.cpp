@@ -1378,7 +1378,7 @@ EX void drawPlayer(eMonster m, cell *where, const shiftmatrix& V, color_t col, d
       ShadowV(V, (cs.charid&1) ? cgi.shFemaleBody : cgi.shPBody);
       if(stop) return;
 
-      const transmatrix VBS = otherbodyparts(V, fc(0, cs.skincolor, 0), items[itOrbFish] ? moWaterElemental : moPlayer, footphase);
+      const transmatrix VBS = otherbodyparts(V, fc(0, cs.dresscolor, 0), items[itOrbFish] ? moWaterElemental : moPlayer, footphase);
   
   
       queuepoly(VBODY * VBS, (cs.charid&1) ? cgi.shFemaleBody : cgi.shPBody, fc(0, cs.skincolor, 0));      
