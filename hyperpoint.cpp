@@ -588,14 +588,25 @@ EX ld material(const hyperpoint& h) {
   else return h[LDIM];
   }
 
+/**
+ * Classifies a point as (ultra)ideal or material
+ * 
+ * @param h The point to classify
+ * @return 1 if `h` is material, 0 if `h` is ideal, -1 if `h` is ultra-ideal
+ */
 EX int safe_classify_ideals(hyperpoint h) {
   if(hyperbolic || in_h2xe()) {
+    // Make the Poincare disk projection
     h /= h[LDIM];
     ld x = MDIM == 3 ? 1 - (h[0] * h[0] + h[1] * h[1]) : 1 - (h[0] * h[0] + h[1] * h[1] + h[2] * h[2]);
+    // Points on the disk are material
     if(x > 1e-6) return 1;
+    // Points outside the disk are ultra-ideal
     if(x < -1e-6) return -1;
+    // Points on the edge are ideal
     return 0;
     }
+  // In non-hyperbolic geometries, every point is material
   return 1;
   }
 
@@ -1577,6 +1588,9 @@ EX ld signum(ld x) { return x<0?-1:x>0?1:0; }
 
 EX bool asign(ld y1, ld y2) { return signum(y1) != signum(y2); }
 
+/**
+ * Where a line through two points intersects the x axis
+ */
 EX ld xcross(ld x1, ld y1, ld x2, ld y2) { return x1 + (x2 - x1) * y1 / (y1 - y2); }
 
 #if HDR

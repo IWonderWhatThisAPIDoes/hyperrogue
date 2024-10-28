@@ -757,7 +757,25 @@ enum eGeometry {
   gAperiodicSpectre,
   gGUARD};
 
-enum eGeometryClass { gcHyperbolic, gcEuclid, gcSphere, gcSol, gcNIH, gcSolN, gcNil, gcProduct, gcSL2 };
+enum eGeometryClass {
+  /** Hyperbolic geometry, where the world is the surface of a hyperboloid */
+  gcHyperbolic,
+  /** Euclidean geometry, where the world is the surface of a linear plane */
+  gcEuclid,
+  /** Spherical geometry, where the world is the surface of a sphere */
+  gcSphere,
+  gcSol,
+  gcNIH,
+  gcSolN,
+  /** Nil geometry: https://en.wikipedia.org/wiki/Nilmanifold */
+  gcNil,
+  /**
+   * Product geometry. The XY plane may be of any other geometry class,
+   * but the Z axis is alwas euclidean 
+   */
+  gcProduct,
+  gcSL2
+};
 
 enum class eVariation { bitruncated, pure, goldberg, irregular, dual, untruncated, warped, unrectified, subcubes, coxeter, dual_subcubes, bch, bch_oct };
 

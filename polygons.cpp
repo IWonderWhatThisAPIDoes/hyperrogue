@@ -16,7 +16,9 @@ static constexpr ld NEWSHAPE = (-13.5);
 static constexpr ld WOLF = (-15.5);
 
 /**
- * Subdivide a line between two ideal points by adding more points between them
+ * Subdivide a line between two points by adding more vertices between them.
+ * The inserted vertices are all ideal points, and the ideal projections
+ * of the end points are also included
  */
 void geometry_information::hpc_connect_ideal(hyperpoint a, hyperpoint b) {
   // Get normalized angle between projected positions of vertices
@@ -42,8 +44,19 @@ void geometry_information::hpcpush(hyperpoint h) {
     return;
     }
 
+  // For adding extra points to ensure line quality
   ld error_threshold = euclid ? 1000 : 1e10;
   ld threshold = (sphere ? (ISMOBWEB || NONSTDVAR ? .04 : .001) : 0.1) * pow(.25, vid.linequality);
+
+  // This function will update several cached vertices
+  // whose names are not very descriptive
+  //
+  // starting_point - The first vertex if it is (ultra)ideal,
+  //                  or its projection into the Poincare disk otherwise
+  // starting_ideal - starting_point, or its material approximation if it is ideal
+  // last_point     - Always the previous point that has been inserted
+  // last_ideal     - last_point, or its material approximation if it is (ultra)ideal
+  //                  and the one before it is material (see branch c1 > 0 && c2 <= 0)
 
   // First vertex
   // Everything needs to be initialized, but that's it
@@ -52,10 +65,15 @@ void geometry_information::hpcpush(hyperpoint h) {
     first = false;
 
     int c = safe_classify_ideals(h);
+
+    // First point is ideal (not ultra-ideal)
+    // Approximate it with a material point before pushing
     if(c == 0) {
       starting_ideal = safe_approximation_of_ideal(h);
       hpc.push_back(starting_ideal);
       }
+    // First point is material
+    // Normalize its homogeneous coordinate before pushing
     else if(c > 0) {
       hpc.push_back(starting_ideal = starting_point = last_point = last_ideal = normalize(h));
       }
@@ -66,13 +84,15 @@ void geometry_information::hpcpush(hyperpoint h) {
     int c1 = safe_classify_ideals(last_point);
     int c2 = safe_classify_ideals(h);
 
-    // Line between two ideal points
+    // Line between two material points
     if(c1 > 0 && c2 > 0) {
       h = normalize(h);
       ld i = intval(last_point, h);
 
       // If the line is too long, subdivide it by adding more vertices
       // (recursively, ugh)
+      // The recursive call will always fall into this branch
+      // (cannot be first, and the midpoint will always be material)
       if(i > threshold && i < error_threshold) {
         hyperpoint md = mid(hpc.back(), h);
         hpcpush(md);
@@ -85,27 +105,38 @@ void geometry_information::hpcpush(hyperpoint h) {
         }
       }
 
-    // From ideal to material point
+    // From material to (ultra)ideal point
     else if(c1 > 0 && c2 <= 0) {
       // If the line is too long, subdivide it by adding more vertices
       for(ld t = threshold; t < ideal_limit; t += threshold) hpc.push_back(last_ideal = towards_inf(last_point, h, t));
       last_point = h;
       }
 
-    // From material to ideal point
+    // From (ultra)ideal to material point
     else if(c1 <= 0 && c2 > 0) {
+      // Approximate the previous point with a material one
       hyperpoint next_ideal = towards_inf(h, last_point, ideal_limit);
+      // Connect the points
       hpc_connect_ideal(last_ideal, next_ideal);
+      // If the line is too long, subdivide it by adding more vertices
       ld t = threshold; while(t < ideal_limit) t += threshold; t -= threshold;
       for(; t > threshold/2; t -= threshold) hpc.push_back(towards_inf(h, last_point, t));
       last_point = last_ideal = h;
       }
 
-    // Between two material points
+    // Between two ideal points
     else if(c1 <= 0 && c2 <= 0) {
+      // Get the point on the line that is closest to zero
       hyperpoint p = closest_to_zero(last_point, h);
+
+      // Logger formatting
       indenter ind(2);
+
       int cp = safe_classify_ideals(p);
+
+      // If that point is material, add more points, recursively
+      // The recursive calls will always end up in another branch,
+      // as the new point is material
       if(cp > 0) {
         hpcpush(normalize(p));
         hpcpush(h);
@@ -154,26 +185,53 @@ void geometry_information::chasmifyPoly(double fol, double fol2, int k) {
     hpc.resize(last->s);
     last->s = isize(hpc);
 
+    // Swith to separate-triangle geometry, because we will be using `texture_order`
     last->flags |= POLY_TRIANGLES;
     last->texture_offset = 0;
 
-    // Push the vertices back into the buffer
+    /**
+     * Maps a logical vertex onto the wall and inserts it into the vertex buffer
+     * 
+     * @param x Relative position along the circumference of the polygon, in [0,1]
+     * @param y Relative vertical position on the wall, in [0,1]
+     */
     auto at = [&] (ld x, ld y) {
-      // Dark magic
+      // Map `x` to an actual point on the circumference of the polygon
       x *= (isize(points) - 1);
-      int zf = int(x);
+      int zf = int(x); // Index of the vertex that comes before `x`
       if(zf == isize(points)-1) zf--;
-      x -= zf;
+      x -= zf; // `x` is now the interpolation factor between vertex `zf` and the next one
       auto hp = points[zf] + (points[zf+1] - points[zf]) * x;
+
+      // Map `y` to actual height of that point
       hp[2] = fol + (fol2-fol) * y;
 
       // Map back to real space and commit
       auto hf = cgi.emb->logical_to_actual(hp);
       hpcpush(hf);
       };
+    
+    // `texture_order` will produce a triangle texture, which we then
+    // render under four different transformations to form a rectangle
+    // To be honest, I do not get why it is this complex either
+    //
+    // 0,1         1,1
+    //   +---------+
+    //   |`,  3  ,`|
+    //   |  `, ,`  |
+    //   | 2  X  4 |
+    //   |  ,` `,  |
+    //   |,`  1  `,|
+    //   +---------+
+    // 0,0         1,0
+    //
+    // 1. A = (.5,.5), B = (0,0), C = (1,0)
     texture_order([&] (ld x, ld y) { at((1-x+y)/2, (1-x-y)/2); });
+    // 2. A = (.5,.5), B = (0,1), C = (0,0)
     texture_order([&] (ld x, ld y) { at((1-x-y)/2, (1+x-y)/2); });
+    // 3. A = (.5,.5), B = (1,1), C = (0,1)
     texture_order([&] (ld x, ld y) { at((1+x-y)/2, (1+x+y)/2); });
+    // 4. A = (.5,.5), B = (1,0), C = (1,1)
     texture_order([&] (ld x, ld y) { at((1+x+y)/2, (1-x+y)/2); });
     }
   }
@@ -287,55 +345,89 @@ void geometry_information::finishshape() {
   // Bail if there is no polygon being constructed
   if(!last) return;
 
+  // If the polygon is a closed curve that and started on an (ultra)ideal vertex,
+  // use an ideal connect
   if(!first && safe_classify_ideals(starting_point) <= 0 && sqhypot_d(LDIM, starting_point - last_point) < 1e-9)
     hpc_connect_ideal(last_ideal, starting_ideal);
 
+  // Mark the end of the vertex range
   last->e = isize(hpc);
+
+  // Add flags that depend on area of the polygon
   double area = 0;
   for(int i=last->s; i<last->e-1; i++)
     area += hpc[i][0] * hpc[i+1][1] - hpc[i+1][0] * hpc[i][1];
   if(abs(area) < 1e-9) last->flags |= POLY_ISSIDE;
   if(area >= 0) last->flags |= POLY_INVERSE;
 
+  // `intester` relates roughly to a centerpoint of the polygon
+
+  // In 3D: Use the center of mass
   if(GDIM == 3) {
     last->intester = Hypc;
     for(int i=last->s; i<last->e; i++) last->intester += hpc[i];
     if(last->s != last->e) last->intester /= last->e-last->s;
     }
 
+  // Any other geometry: Try four different options
+  // and use the first one that does not fail
   else for(int s=0; s<4; s++) {
+    // Option 1: origin
     last->intester = C0;
+
+    // Option 0: Center of mass, but not normalized for some reason
     if(s == 0) {
+      // Also the last point is missing for some reason
+      // I think it might be because the polygons are closed curves
+      // (last vertex is a duplicate of first, so we do not want to include it twice)
       for(int i=last->s; i<last->e-1; i++)
       for(int j=0; j<3; j++)
         last->intester[j] += hpc[i][j];
       last->intester = mid(last->intester, last->intester);
       }
 
+    // Options 2 and 3: Suspiciously specific hardcoded points
     if(s == 2)
       last->intester = hpxy(.5, .2);
-
     if(s == 3)
       last->intester = hpxy(.2, .2518);
+
     // prevent zeros
     last->intester = rgpushxto0(hpxy(1.4e-5, 1.7e-5)) * last->intester;
+
+    // Unset these flags, they are only for this calculation
     last->flags &=~ (POLY_BADCENTERIN | POLY_CENTERIN);
 
-
+    // Check each edge of the polygon
     for(int i=last->s; i<last->e-1; i++) {
-      ld x1 = hpc[i][0] - last->intester[0], y1 = hpc[i][1] - last->intester[1], x2 = hpc[i+1][0] - last->intester[0], y2 = hpc[i+1][1] - last->intester[1];
+      // Get relative position to the current candidate centerpoint
+      ld x1 = hpc[i][0] - last->intester[0],
+        y1 = hpc[i][1] - last->intester[1],
+        x2 = hpc[i+1][0] - last->intester[0],
+        y2 = hpc[i+1][1] - last->intester[1];
+      
       if(asign(y1, y2)) {
         ld x = xcross(x1, y1, x2, y2);
+
+        // Reject the candidate centerpoint if an edge runs right through it
         if(abs(x) < 1e-3 && !(last->flags & POLY_ISSIDE)) {
           if(s >= 2 && GDIM == 2) println(hlog, "close call [", s, "], x = ", fts(x));
           last->flags |= POLY_BADCENTERIN;
           }
+        
+        // `POLY_CENTERIN` means the center is inside the polygon
+        // That means we would hit an odd number of edges that intersect
+        // the x axis at negative x
         if(x < 0) last->flags ^= POLY_CENTERIN;
         }
       }
+
+    // If the `POLY_BADCENTERIN` flag is not set, accept the centering
+    // Also, option s == 3 will be accepted no matter what
     if(!(last->flags & POLY_BADCENTERIN)) break;
     }
 
+  // Check whether the polygon is convex with respect to the origin
   bool allplus = true, allminus = true;
   for(int i=last->s; i<last->e-1; i++) {
     ld v = hpc[i][0] * hpc[i+1][1] - hpc[i+1][0] * hpc[i][1];
@@ -344,17 +436,17 @@ void geometry_information::finishshape() {
     }
   if(allminus || allplus) last->flags |= POLY_CCONVEX;
 
+  // Check whether the polygon is convex with respect to its first vertex
   allplus = true, allminus = true;
   ld cx = hpc[last->s][0], cy = hpc[last->s][1];
-
   for(int i=last->s; i<last->e-1; i++) {
     ld v = (hpc[i][0]-cx) * (hpc[i+1][1]-cy) - (hpc[i+1][0]-cx) * (hpc[i][1]-cy);
     if(v > 1e-6) allplus = false;
     if(v < -1e-6) allminus = false;
     }
-
   if(allminus || allplus) last->flags |= POLY_VCONVEX;
 
+  // Push the polygon and reset builder
   allshapes.push_back(last);
   last = NULL;
 
@@ -386,9 +478,9 @@ void geometry_information::bshape(hpcshape& sh, PPR prio) {
  * 
  * @param sh The polygon that will be filled
  * @param prio Rendering priority (layer) of the polygon
- * @param shzoom Scale factor override
+ * @param shzoom Scale factor override. Set to `WOLF` to use wolf-sprite-specific scale factors
  * @param shapeid ID of the polygon. Used to look up the vertex data in the global vertex vector
- * @param bonus 
+ * @param bonus Rotation angle offset
  * @param flags 
  */
 void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int shapeid, double bonus, flagtype flags) {
@@ -428,14 +520,22 @@ void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int sha
   if(&sh == &cgi.shPikeBody) shzoomx *= 1.1, shzoomy *= 1.5;
   if(&sh == &cgi.shPikeEye) shzoomx *= 1.1, shzoomy *= 1.5;
 
+  // `rots` is just a marker, the actual number of symmetries
+  // depends on the current tiling geometry
   int rots2 = rots;
   // shapes 368..370 are specially designed
   if(shapeid >= 368 && shapeid <= 370)
     shzoomx *= bscale7, shzoomy *= bscale7;
   else {
+    // Not sure what this flag means, could be
+    // `POLY_DRAWLINES`, `qClosed`, `mf::azimuthal`, `reg3::cox_othercell`
+    // For some reason, those things have always hexagonal symmetry
     if(flags&1) {
       rots2 = 6;
       }
+    // This indicates the polygon will be used for rendering a core tile
+    // (heptagon by default), so use the actual number of vertices of that
+    // (they can be changed to octagons, and much more)
     else if(rots == 7) {
       rots2 = S7;
       if(rots2 != 7 && !euclid) bonus += M_PI;
@@ -444,6 +544,9 @@ void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int sha
       bonus += brot7;
       if(euclid) shzoomx *= .9, shzoomy *= .9, bonus += .3;
       }
+    // This indicates the polygon will be used for rendering a corner tile
+    // (hexagon by default, but only half its symmetries are actually rendered,
+    // so it is a triangle)
     if(rots == 3) {
       rots2 = S3;
       shzoomx *= bscale6;
@@ -451,6 +554,8 @@ void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int sha
       if(S6 == 8) bonus += .4;
       bonus += brot6;
       }
+    // This indicates the polygon will be used for rendering a corner tile
+    // (hexagon by default)
     if(rots == 6) {
       rots2 = S6;
       shzoomx *= bscale6;
@@ -459,11 +564,25 @@ void geometry_information::bshape(hpcshape& sh, PPR prio, double shzoom, int sha
       bonus += brot6;
       }
     }
+  // Additional rotation angle offset due to the polygon being rendered
+  // under different symmetry than it was designed for
+  // 
+  // If the polygon was designed for heptagonal symmetry, its vertex data will
+  // fill 1/7 of the circle (the rest would be identical copies),
+  // so if it is rendered under octagonal symmetry, the vertices need to be
+  // squished to only take up 1/8 of the circle
   double bonusf = (rots-rots2+.0) / rots2;
 
-  // Extracts a single vertex position (x, y) from the global vector
+  /**
+   * Extracts a single vertex position from the global vector
+   * 
+   * @param i Index of the vertex (first vertex of current polygon is 0)
+   * @param mul 1, or -1 to flip the y coordinate
+   */
   auto ipoint = [&] (int i, int mul) {
+    // Get the point from data
     hyperpoint h = hpxy(polydata[whereis+2*i] * shzoomx, polydata[whereis+2*i+1] * shzoomy * mul);
+    // Early return if no rotation of any kind is needed
     if(rots == rots2 && !bonus) return h;
     double d = atan2(h[0], h[1]);
     return spin(bonus + bonusf * d) * h;
@@ -537,11 +656,11 @@ void geometry_information::zoomShape(hpcshape& old, hpcshape& newsh, double fact
  * @example `gsca(true, 2.0, false, 3.0) == 2.0`
  * @example `gsca(true, 2.0, true, 3.0) == 6.0`
  */
+ld gsca() { return 1; }
 template<class... T> ld gsca(bool geometry, ld factor, T... t) {
   if(geometry) return factor * gsca(t...);
   else return gsca(t...);
   }
-ld gsca() { return 1; }
 
 /**
  * Shorthand for calculation of a conditional accumulative rotation angle.
@@ -552,16 +671,16 @@ ld gsca() { return 1; }
  * 
  * @return Total rotation angle
  * 
- * @example `gsca() == 0.0`
- * @example `gsca(true, 2.0) == 2.0`
- * @example `gsca(true, 2.0, false, 3.0) == 2.0`
- * @example `gsca(true, 2.0, true, 3.0) == 5.0`
+ * @example `grot() == 0.0`
+ * @example `grot(true, 2.0) == 2.0`
+ * @example `grot(true, 2.0, false, 3.0) == 2.0`
+ * @example `grot(true, 2.0, true, 3.0) == 5.0`
  */
+ld grot() { return 0; }
 template<class... T> ld grot(bool geometry, ld factor, T... t) {
   if(geometry) return factor + grot(t...);
   else return grot(t...);
   }
-ld grot() { return 0; }
 
 #if HDR
 #define SHADMUL (S3==4 ? 1.05 : 1.3)
@@ -571,6 +690,7 @@ ld grot() { return 0; }
  * Populate terrain height data and construct polygons for tile side walls
  */
 void geometry_information::make_sidewalls() {
+  // Terrain height table
   for(int i=0; i<=3; i++)
     dfloor_table[i] = SLEV[i];
   dfloor_table[SIDE_WALL] = WALL;
@@ -584,6 +704,7 @@ void geometry_information::make_sidewalls() {
 
   // sidewall parameters for the 3D mode
   for(int k=0; k<SIDEPARS; k++) {
+    // Populate wall height table
     double dlow=FLOOR, dhi=FLOOR;
     if(k==SIDE_WALL) dhi = WALL;
     else if(k==SIDE_LAKE) dlow = LAKE;
@@ -599,8 +720,11 @@ void geometry_information::make_sidewalls() {
     dlow_table[k] = dlow;
     dhi_table[k] = dhi;
 
+    // Some walls only render in 3D
     validsidepar[k] = (dlow > 0 && dhi > 0) || (dlow < 0 && dhi < 0) || GDIM == 3;
 
+    // Create the wall polygon
+    // It is just a single edge, with added depth using `chasmifyPoly`
     bshape(shSemiFloorSide[k], PPR::LAKEWALL);
     for(int t=0; t<=3; t+=3) hpcpush(ddi(S7 + (3+t)*S14, floorrad0) * C0);
     chasmifyPoly(dlow, dhi, k);
@@ -1108,7 +1232,7 @@ hyperpoint ray_kleinize(hyperpoint h, int id, ld pz) {
  * 
  * @param id Index of the tile face (and the target entry in the wall polygon vectors)
  * @param vertices Vertices of the polygon that sets bounds of the wall
- * @param weights 
+ * @param weights Weights of individual vertices, used for calculating the center of mass
  */
 void geometry_information::make_wall(int id, vector<hyperpoint> vertices, vector<ld> weights) {
   // Write down the index where parts of this wall start
@@ -1378,6 +1502,9 @@ void geometry_information::configure_floorshapes() {
   generate_floorshapes();
   }
 
+/**
+ * Populate all polygons
+ */
 void geometry_information::prepare_shapes() {
   require_basics();
   if(cgflags & qRAYONLY) return;

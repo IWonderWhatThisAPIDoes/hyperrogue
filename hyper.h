@@ -908,19 +908,63 @@ namespace daily {
 
 #define ONEMPTY if(d == 7 && passable(c, NULL, 0) && !safety && !reptilecheat)
 
+/**
+ * @brief Helper function for constructing texutes.
+ * 
+ * Computes a set of vertices and calls a callback for each of them.
+ * The vertices, if projected directly onto the screen,
+ * form a group of individual triangles that, together, form a single large triangle
+ * with corner points (0,0), (0,1), and (1,0). 
+ * Number of the small triangles is given by global `videopar::texture_step`.
+ * Caller-provided callback is free to transform the points however they like,
+ * to construct the texture they need.
+ * 
+ * @param f Callback that will be called for each computed vertex.
+ *          Usualy inserts a vertex into the texture being rendered.
+ * 
+ * @pre
+ *  1
+ *  +
+ *  |\  videopar::texture_step == 3
+ *  | \
+ *  |8 \
+ *  +---+
+ *  |\ 9|\
+ *  | \ | \
+ *  |4 \|5 \
+ *  +---+---+
+ *  |\ 6|\ 7|\
+ *  | \ | \ | \
+ *  |1 \|2 \|3 \
+ *  +---+---+---+ 1
+ * 0
+ * @pre
+ */
 template <class T> void texture_order(const T& f) {
   const int STEP = vid.texture_step;
   const ld STEP2 = STEP;
+
+  // Traverse texture row-by-row
   for(int y=0; y<STEP; y++)
   for(int x=0; x<STEP; x++) {
+    // Will take on values from [0,1)
     ld x0 = x / STEP2;
     ld y0 = y / STEP2;
+    // The size of single step
     ld b = 1 / STEP2;
 
      if(x+y < STEP) {
+       // +,
+       // | \ 
+       // +--+
+       // ^
+       // x0y0
        f(x0, y0); f(x0+b, y0); f(x0, y0+b);
        }
      if(x+y <= STEP && x && y) {
+       // +--+ < x0y0
+       //  \ |
+       //   `+
        f(x0, y0); f(x0-b, y0); f(x0, y0-b);
        }
     }
